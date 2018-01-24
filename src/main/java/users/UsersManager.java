@@ -1,35 +1,36 @@
-package hotels;
+package users;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class HotelsManager {
+public class UsersManager {
 
   private Connection connection;
 
-  public HotelsManager() {
+  public UsersManager() {
     // create a database connection
     try {
-      connection = DriverManager.getConnection("jdbc:sqlite:hotels.db");
+      connection = DriverManager.getConnection("jdbc:sqlite:users.db");
     } catch (SQLException e) {
       System.err.println(e);
     }
   }
 
-  public List<Hotel> getAllHotels() {
+  public List<User> getAllUsers() {
     PreparedStatement statement = null;
     ResultSet rs = null;
-    List<Hotel> hotels = new ArrayList<>();
+    List<User> users = new ArrayList<>();
     try {
       String query = "SELECT * " +
-          "FROM hotels";
+          "FROM users";
       statement = connection.prepareStatement(query);
       rs = statement.executeQuery();
       while (rs.next()) {
         // read the result set
-        Hotel hotel = extractHotel(rs);
-        hotels.add(hotel);
+        User user = extractUser(rs);
+
+        users.add(user);
       }
     } catch (SQLException e) {
       System.err.println(e.getMessage());
@@ -45,51 +46,36 @@ public class HotelsManager {
         System.err.println(e);
       }
     }
-    return hotels;
+    return users;
   }
 
-  public List<Hotel> getHotels(String toDestination) {
-    PreparedStatement statement = null;
-    ResultSet rs = null;
-    List<Hotel> hotels = new ArrayList<>();
-    try {
-      String query = "SELECT * " +
-          "FROM hotels h " +
-          "WHERE h.city = ?";
-      statement = connection.prepareStatement(query);
-      statement.setString(1, toDestination);
-      rs = statement.executeQuery();
-      while (rs.next()) {
-        Hotel hotel = extractHotel(rs);
-
-        hotels.add(hotel);
-      }
-    } catch (SQLException e) {
-      System.err.println(e.getMessage());
-    } finally {
-      try {
-        if (rs != null) {
-          rs.close();
-        }
-        if (statement != null) {
-          statement.close();
-        }
-      } catch (SQLException e) {
-        System.err.println(e);
-      }
-    }
-    return hotels;
-  }
-
-  private Hotel extractHotel(ResultSet rs) throws SQLException {
-    // read the result set
-    int hotelId = rs.getInt(1);
+  private User extractUser(ResultSet rs) throws SQLException {
+    int userId = rs.getInt(1);
     String name = rs.getString(2);
-    String city = rs.getString(3);
-    String address = rs.getString(4);
-    int stars = rs.getInt(5);
-    int capacity = rs.getInt(6);
-    return new Hotel(hotelId, name, city, address, stars, capacity);
+    int age = rs.getInt(3);
+    return new User(userId, name, age);
+  }
+
+  public void addUser(User user) {
+    PreparedStatement statement = null;
+    try {
+      String query = "INSERT INTO users (id, name, age) VALUES (?, ?, ?)";
+      statement = connection.prepareStatement(query);
+      statement.setInt(1, user.getId());
+      statement.setString(2, user.getName());
+      statement.setInt(3, user.getAge());
+      statement.executeUpdate();
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+    } finally {
+      try {
+        if (statement != null) {
+          statement.close();
+        }
+      } catch (SQLException e) {
+        System.err.println(e);
+      }
+    }
   }
 
   public void close() {
