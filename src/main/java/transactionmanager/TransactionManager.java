@@ -3,6 +3,8 @@ package transactionmanager;
 import airlines.AirlinesManager;
 import airlines.Flight;
 import airlines.Route;
+import hotels.Hotel;
+import hotels.HotelsManager;
 import io.grpc.stub.StreamObserver;
 import server.*;
 
@@ -51,8 +53,10 @@ public class TransactionManager {
       reentrantLock.unlock();
       System.out.println("All locks for " + transaction.getId() + " acquired at " + new Date(System.currentTimeMillis()));
 
+      StringBuilder messageBuilder = new StringBuilder();
+      messageBuilder.append("Success!");
       for (Operation operation : transaction.getOperationsList()) {
-        runOperation(operation);
+        runOperation(operation, messageBuilder);
       }
       System.out.println("All operations run for " + transaction.getId() + " at " + new Date(System.currentTimeMillis()));
 
@@ -67,7 +71,7 @@ public class TransactionManager {
       }
       reentrantLock.unlock();
 
-      TransactionReply reply = TransactionReply.newBuilder().setMessage("Success!").build();
+      TransactionReply reply = TransactionReply.newBuilder().setMessage(messageBuilder.toString()).build();
       responseObserver.onNext(reply);
       responseObserver.onCompleted();
       System.out.println("All locks released from " + transaction.getId());
@@ -75,11 +79,11 @@ public class TransactionManager {
     }
   }
 
-  private void runOperation(Operation operation) {
+  private void runOperation(Operation operation, StringBuilder messageBuilder) {
     if (operation.getInstruction().equals("R") && operation.getVariable().getId().equals("flights")) {
       AirlinesManager airlinesManager = new AirlinesManager();
       List<Flight> flights = airlinesManager.getAllFlights();
-      System.out.println(flights);
+      messageBuilder.append(flights);
       airlinesManager.close();
     } else if (operation.getInstruction().equals("W") && operation.getVariable().getId().equals("route")) {
       AirlinesManager airlinesManager = new AirlinesManager();
@@ -93,6 +97,14 @@ public class TransactionManager {
       int routeId = Integer.parseInt(parameters.getParameters(0));
       airlinesManager.removeRoute(routeId);
       airlinesManager.close();
+    } else if (operation.getInstruction().equals("R") && operation.getVariable().getId().equals("destinations")) {
+      AirlinesManager airlinesManager = new AirlinesManager();
+      List<Flight> flights = airlinesManager.getFlights(operation.getParameters().getParameters(0));
+      messageBuilder.append(flights);
+    } else if (operation.getInstruction().equals("R") && operation.getVariable().getId().equals("hotels")) {
+      HotelsManager hotelsManager = new HotelsManager();
+      List<Hotel> hotels = hotelsManager.getAllHotels();
+      messageBuilder.append(hotels);
     }
   }
 }

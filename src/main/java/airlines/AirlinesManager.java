@@ -17,12 +17,10 @@ public class AirlinesManager {
   }
 
   public List<Flight> getAllFlights() {
-    Statement statement = null;
+    PreparedStatement statement = null;
     ResultSet rs = null;
     List<Flight> flights = new ArrayList<>();
     try {
-      statement = connection.createStatement();
-      statement.setQueryTimeout(30);  // set timeout to 30 sec.
       String query = "SELECT " +
           "  r.id, " +
           "  r.source, " +
@@ -31,16 +29,11 @@ public class AirlinesManager {
           "  f.arrival_time " +
           "FROM flights f " +
           "  INNER JOIN routes r ON f.route_id = r.id";
-      rs = statement.executeQuery(query);
+      statement = connection.prepareStatement(query);
+      rs = statement.executeQuery();
       while (rs.next()) {
         // read the result set
-        int routeId = rs.getInt(1);
-        String source = rs.getString(2);
-        String destination = rs.getString(3);
-        Timestamp departure = rs.getTimestamp(4);
-        Timestamp arrival = rs.getTimestamp(5);
-        Route route = new Route(routeId, source, destination);
-        Flight flight = new Flight(route, departure, arrival);
+        Flight flight = extractFlight(rs);
 
         flights.add(flight);
       }
@@ -59,6 +52,56 @@ public class AirlinesManager {
       }
     }
     return flights;
+  }
+
+  public List<Flight> getFlights(String toDestination) {
+    PreparedStatement statement = null;
+    ResultSet rs = null;
+    List<Flight> flights = new ArrayList<>();
+    try {
+      String query = "SELECT " +
+          "  r.id, " +
+          "  r.source, " +
+          "  r.destination, " +
+          "  f.departure_time, " +
+          "  f.arrival_time " +
+          "FROM flights f " +
+          "  INNER JOIN routes r ON f.route_id = r.id " +
+          "WHERE r.destination = ?";
+      statement = connection.prepareStatement(query);
+      statement.setString(1, toDestination);
+      rs = statement.executeQuery();
+      while (rs.next()) {
+        // read the result set
+        Flight flight = extractFlight(rs);
+
+        flights.add(flight);
+      }
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+    } finally {
+      try {
+        if (rs != null) {
+          rs.close();
+        }
+        if (statement != null) {
+          statement.close();
+        }
+      } catch (SQLException e) {
+        System.err.println(e);
+      }
+    }
+    return flights;
+  }
+
+  private Flight extractFlight(ResultSet rs) throws SQLException {
+    int routeId = rs.getInt(1);
+    String source = rs.getString(2);
+    String destination = rs.getString(3);
+    Timestamp departure = rs.getTimestamp(4);
+    Timestamp arrival = rs.getTimestamp(5);
+    Route route = new Route(routeId, source, destination);
+    return new Flight(route, departure, arrival);
   }
 
   public void addRoute(Route route) {

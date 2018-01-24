@@ -1,0 +1,10 @@
+2
+3 t1
+R 5
+W route 2 Berlin Cluj-Napoca
+R flights
+4 t2
+W 2
+D route 2
+R destinations Berlin
+R hotels

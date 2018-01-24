@@ -1,6 +1,5 @@
 package client;
 
-import com.google.protobuf.TextFormat;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
@@ -22,7 +21,6 @@ public class TravelAgencyClient {
 
   private final ManagedChannel channel;
   private final TransactionHandlerGrpc.TransactionHandlerBlockingStub blockingStub;
-  private static final String FILENAME = "transactions";
 
   private TravelAgencyClient(String host, int port) {
     this(ManagedChannelBuilder.forAddress(host, port)
@@ -41,7 +39,7 @@ public class TravelAgencyClient {
 
   private void sendTransactions(List<Transaction> transactions) {
     for (Transaction transaction : transactions) {
-      logger.info("Will try to sendTransactions " + transactions + " ...");
+      logger.info("Will try to send transaction " + transaction.getId() + " ...");
       TransactionRequest request = TransactionRequest.newBuilder().addTransaction(transaction).build();
       TransactionReply response;
       try {
@@ -58,7 +56,7 @@ public class TravelAgencyClient {
     TravelAgencyClient client = new TravelAgencyClient("localhost", 50051);
 
     List<Transaction> transactions = new ArrayList<>();
-    try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
+    try (BufferedReader br = new BufferedReader(new FileReader(args[0]))) {
 
       String sCurrentLine = br.readLine();
       int noTransactions = Integer.parseInt(sCurrentLine);
@@ -109,9 +107,9 @@ public class TravelAgencyClient {
         transactions.add(transaction);
       }
 
-      for (Transaction transaction : transactions) {
-        System.out.println(TextFormat.shortDebugString(transaction) + " " + transaction.getOperationsList());
-      }
+//      for (Transaction transaction : transactions) {
+//        System.out.println(TextFormat.shortDebugString(transaction) + " " + transaction.getOperationsList());
+//      }
 
       client.sendTransactions(transactions);
     } catch (IOException e) {
