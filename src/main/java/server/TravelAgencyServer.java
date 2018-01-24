@@ -56,11 +56,7 @@ public class TravelAgencyServer {
   class TransactionHandlerImpl extends TransactionHandlerGrpc.TransactionHandlerImplBase {
     @Override
     public void sendTransaction(TransactionRequest req, StreamObserver<TransactionReply> responseObserver) {
-      TravelAgencyServer.this.transactionManager.setTransactions(req.getTransactionList());
-      TravelAgencyServer.this.transactionManager.run();
-      TransactionReply reply = TransactionReply.newBuilder().setMessage("Success!").build();
-      responseObserver.onNext(reply);
-      responseObserver.onCompleted();
+      TravelAgencyServer.this.transactionManager.addTransaction(req.getTransaction(0), responseObserver);
     }
   }
 

@@ -40,16 +40,18 @@ public class TravelAgencyClient {
   }
 
   private void sendTransactions(List<Transaction> transactions) {
-    logger.info("Will try to sendTransactions " + transactions + " ...");
-    TransactionRequest request = TransactionRequest.newBuilder().addAllTransaction(transactions).build();
-    TransactionReply response;
-    try {
-      response = blockingStub.sendTransaction(request);
-    } catch (StatusRuntimeException e) {
-      logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
-      return;
+    for (Transaction transaction : transactions) {
+      logger.info("Will try to sendTransactions " + transactions + " ...");
+      TransactionRequest request = TransactionRequest.newBuilder().addTransaction(transaction).build();
+      TransactionReply response;
+      try {
+        response = blockingStub.sendTransaction(request);
+      } catch (StatusRuntimeException e) {
+        logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
+        return;
+      }
+      logger.info("Reply: " + response.getMessage());
     }
-    logger.info("Reply: " + response.getMessage());
   }
 
   public static void main(String[] args) throws Exception {

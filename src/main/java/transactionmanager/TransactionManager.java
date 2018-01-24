@@ -3,102 +3,75 @@ package transactionmanager;
 import airlines.AirlinesManager;
 import airlines.Flight;
 import airlines.Route;
-import server.Operation;
-import server.OperationParameters;
-import server.Transaction;
-import server.Variable;
+import io.grpc.stub.StreamObserver;
+import server.*;
 
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class TransactionManager {
 
-  private List<Transaction> transactions = new ArrayList<>();
-  private Set<Variable> variables;
-  private int systemTime = 0;
-  private List<Transaction> ready = new ArrayList<>();
-  private List<Transaction> running = new ArrayList<>();
-  private List<Transaction> done = new ArrayList<>();
   private Map<Variable, Transaction> writeLocks = new HashMap<>();
   private Map<Variable, List<Transaction>> readLocks = new HashMap<>();
-  private Map<Transaction, Integer> operationPointer = new HashMap<>();
 
-  public List<Transaction> getTransactions() {
-    return transactions;
+  private ExecutorService executor = Executors.newFixedThreadPool(5);
+  private ReentrantLock reentrantLock = new ReentrantLock();
+
+  public void addTransaction(Transaction transaction, StreamObserver<TransactionReply> responseObserver) {
+    executor.submit(() -> runTransaction(transaction, responseObserver));
   }
 
-  public void setTransactions(List<Transaction> transactions) {
-    this.transactions = transactions;
-    this.variables = new HashSet<>();
-    for (Transaction transaction : transactions) {
-      for (Operation operation : transaction.getOperationsList()) {
-        this.variables.add(operation.getVariable());
-      }
-    }
-    ready.addAll(transactions);
-  }
+  private void runTransaction(Transaction transaction, StreamObserver<TransactionReply> responseObserver) {
+    List<Variable> read = transaction.getReadSetList();
+    List<Variable> write = transaction.getWriteSetList();
 
-  public void run() {
     while (true) {
-      for (Transaction transaction : ready) {
-        List<Variable> read = transaction.getReadSetList();
-        List<Variable> write = transaction.getWriteSetList();
-
-        try {
-          for (Variable variable : write) {
-            if (writeLocks.get(variable) != null) {
-              throw new IllegalAccessException();
-            }
-          }
-        } catch (IllegalAccessException e) {
-          continue;
-        }
-
+      try {
+        reentrantLock.lock();
         for (Variable variable : write) {
-          writeLocks.put(variable, transaction);
-        }
-
-        for (Variable variable : read) {
-          readLocks.computeIfAbsent(variable, k -> new ArrayList<>());
-          readLocks.get(variable).add(transaction);
-        }
-        System.out.println("All locks for " + transaction + " acquired at " + systemTime);
-        running.add(transaction);
-        operationPointer.put(transaction, 0);
-      }
-      ready.removeAll(running);
-
-      if (running.size() > 0) {
-        Transaction thisWillRun = running.get(0);
-        System.out.println("This will run " + thisWillRun + " at " + systemTime);
-
-        int currentOperation = operationPointer.get(thisWillRun);
-        System.out.println("This operation will run " + thisWillRun.getOperations(currentOperation));
-        Operation operation = thisWillRun.getOperations(currentOperation);
-
-        runOperation(operation);
-
-        currentOperation++;
-        operationPointer.put(thisWillRun, currentOperation);
-
-        if (currentOperation > thisWillRun.getOperationsCount() - 1) {
-          System.out.println("All operations run for " + thisWillRun + " at " + systemTime);
-          for (Variable variable : variables) {
-            if (writeLocks.get(variable) != null && writeLocks.get(variable) == thisWillRun) {
-              writeLocks.put(variable, null);
-            }
-            if (readLocks.get(variable) != null && readLocks.get(variable).contains(thisWillRun)) {
-              readLocks.get(variable).remove(thisWillRun);
-            }
+          if (writeLocks.get(variable) != null) {
+            throw new IllegalAccessException();
           }
-          running.remove(thisWillRun);
-          done.add(thisWillRun);
-          System.out.println("All locks released");
+        }
+      } catch (IllegalAccessException e) {
+        reentrantLock.unlock();
+        continue;
+      }
+
+      for (Variable variable : write) {
+        writeLocks.put(variable, transaction);
+      }
+
+      for (Variable variable : read) {
+        readLocks.computeIfAbsent(variable, k -> new ArrayList<>());
+        readLocks.get(variable).add(transaction);
+      }
+      reentrantLock.unlock();
+      System.out.println("All locks for " + transaction.getId() + " acquired at " + new Date(System.currentTimeMillis()));
+
+      for (Operation operation : transaction.getOperationsList()) {
+        runOperation(operation);
+      }
+      System.out.println("All operations run for " + transaction.getId() + " at " + new Date(System.currentTimeMillis()));
+
+      reentrantLock.lock();
+      for (Variable variable : writeLocks.keySet()) {
+        if (writeLocks.get(variable) != null && writeLocks.get(variable) == transaction) {
+          writeLocks.put(variable, null);
+        }
+        if (readLocks.get(variable) != null && readLocks.get(variable).contains(transaction)) {
+          readLocks.get(variable).remove(transaction);
         }
       }
-      if (done.size() == transactions.size()) {
-        break;
-      }
-      systemTime++;
+      reentrantLock.unlock();
+
+      TransactionReply reply = TransactionReply.newBuilder().setMessage("Success!").build();
+      responseObserver.onNext(reply);
+      responseObserver.onCompleted();
+      System.out.println("All locks released from " + transaction.getId());
+      break;
     }
   }
 
