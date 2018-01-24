@@ -1,41 +1,36 @@
 package client;
 
+import com.google.protobuf.TextFormat;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
-import server.Transaction;
-import server.TransactionHandlerGrpc;
-import server.TransactionReply;
-import server.TransactionRequest;
+import server.*;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * A simple client that requests a greeting from the {@link server.TravelAgencyServer}.
- */
 public class TravelAgencyClient {
   private static final Logger logger = Logger.getLogger(TravelAgencyClient.class.getName());
 
   private final ManagedChannel channel;
   private final TransactionHandlerGrpc.TransactionHandlerBlockingStub blockingStub;
+  private static final String FILENAME = "transactions";
 
-  /**
-   * Construct client connecting to HelloWorld server at {@code host:port}.
-   */
-  public TravelAgencyClient(String host, int port) {
+  private TravelAgencyClient(String host, int port) {
     this(ManagedChannelBuilder.forAddress(host, port)
-        // Channels are secure by default (via SSL/TLS). For the example we disable TLS to avoid
-        // needing certificates.
         .usePlaintext(true)
         .build());
   }
 
-  /**
-   * Construct client for accessing RouteGuide server using the existing channel.
-   */
-  TravelAgencyClient(ManagedChannel channel) {
+  private TravelAgencyClient(ManagedChannel channel) {
     this.channel = channel;
     blockingStub = TransactionHandlerGrpc.newBlockingStub(channel);
   }
@@ -44,12 +39,9 @@ public class TravelAgencyClient {
     channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
   }
 
-  /**
-   * Say hello to server.
-   */
-  public void greet(Transaction transaction) {
-    logger.info("Will try to greet " + transaction + " ...");
-    TransactionRequest request = TransactionRequest.newBuilder().setTransaction(transaction).build();
+  private void sendTransactions(List<Transaction> transactions) {
+    logger.info("Will try to sendTransactions " + transactions + " ...");
+    TransactionRequest request = TransactionRequest.newBuilder().addAllTransaction(transactions).build();
     TransactionReply response;
     try {
       response = blockingStub.sendTransaction(request);
@@ -57,22 +49,71 @@ public class TravelAgencyClient {
       logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
       return;
     }
-    logger.info("Greeting: " + response.getMessage());
+    logger.info("Reply: " + response.getMessage());
   }
 
-  /**
-   * Greet server. If provided, the first element of {@code args} is the name to use in the
-   * greeting.
-   */
   public static void main(String[] args) throws Exception {
     TravelAgencyClient client = new TravelAgencyClient("localhost", 50051);
-    try {
-      /* Access a service running on the local machine on port 50051 */
-      String user = "world";
-      if (args.length > 0) {
-        user = args[0]; /* Use the arg as the name to greet if provided */
+
+    List<Transaction> transactions = new ArrayList<>();
+    try (BufferedReader br = new BufferedReader(new FileReader(FILENAME))) {
+
+      String sCurrentLine = br.readLine();
+      int noTransactions = Integer.parseInt(sCurrentLine);
+      Set<Variable> variables = new HashSet<>();
+
+      for (int noTransaction = 0; noTransaction < noTransactions; noTransaction++) {
+        sCurrentLine = br.readLine();
+        int noInstructions = Integer.parseInt(sCurrentLine.split(" ")[0]);
+        String transactionId = sCurrentLine.split(" ")[1];
+
+        Set<Variable> readSet = new HashSet<>();
+        Set<Variable> writeSet = new HashSet<>();
+        List<Operation> operations = new ArrayList<>();
+        for (int noInstruction = 0; noInstruction < noInstructions; noInstruction++) {
+          sCurrentLine = br.readLine();
+          String[] lineElements = sCurrentLine.split(" ");
+          String instruction = lineElements[0];
+          String var = lineElements[1];
+
+          Variable variable = Variable.newBuilder().setId(var).build();
+          variables.add(variable);
+
+          OperationParameters parameters = OperationParameters.newBuilder().build();
+          if (lineElements.length > 2) {
+            List<String> stringListParameters = new ArrayList<>();
+            for (int parameterIndex = 2; parameterIndex < lineElements.length; parameterIndex++) {
+              stringListParameters.add(lineElements[parameterIndex]);
+            }
+            parameters = OperationParameters.newBuilder().addAllParameters(stringListParameters).build();
+          }
+          Operation operation = Operation.newBuilder().setInstruction(instruction).setVariable(variable).
+              setParameters(parameters).build();
+
+          if (operation.getInstruction().equals("W") || operation.getInstruction().equals("D")) {
+            writeSet.add(operation.getVariable());
+          } else if (operation.getInstruction().equals("R")) {
+            readSet.add(operation.getVariable());
+          }
+
+          operations.add(operation);
+        }
+
+        Transaction transaction = Transaction.newBuilder().setId(transactionId).
+            addAllOperations(operations).
+            addAllReadSet(readSet).
+            addAllWriteSet(writeSet).
+            build();
+        transactions.add(transaction);
       }
-      client.greet(Transaction.newBuilder().setId("1").build());
+
+      for (Transaction transaction : transactions) {
+        System.out.println(TextFormat.shortDebugString(transaction) + " " + transaction.getOperationsList());
+      }
+
+      client.sendTransactions(transactions);
+    } catch (IOException e) {
+      e.printStackTrace();
     } finally {
       client.shutdown();
     }

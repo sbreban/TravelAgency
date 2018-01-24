@@ -12,7 +12,7 @@ import java.util.*;
 
 public class TransactionManager {
 
-  private List<Transaction> transactions;
+  private List<Transaction> transactions = new ArrayList<>();
   private Set<Variable> variables;
   private int systemTime = 0;
   private List<Transaction> ready = new ArrayList<>();
@@ -28,18 +28,16 @@ public class TransactionManager {
 
   public void setTransactions(List<Transaction> transactions) {
     this.transactions = transactions;
-  }
-
-  public Set<Variable> getVariables() {
-    return variables;
-  }
-
-  public void setVariables(Set<Variable> variables) {
-    this.variables = variables;
+    this.variables = new HashSet<>();
+    for (Transaction transaction : transactions) {
+      for (Operation operation : transaction.getOperationsList()) {
+        this.variables.add(operation.getVariable());
+      }
+    }
+    ready.addAll(transactions);
   }
 
   public void run() {
-    ready.addAll(transactions);
     while (true) {
       for (Transaction transaction : ready) {
         List<Variable> read = transaction.getReadSetList();

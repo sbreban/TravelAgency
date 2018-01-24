@@ -51,7 +51,7 @@ message Operation {
 
 // The request message containing the user's name.
 message TransactionRequest {
-    Transaction transaction = 1;
+    repeated Transaction transaction = 1;
 }
 
 // The response message containing the greetings
