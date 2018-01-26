@@ -10,6 +10,7 @@ D routes 4
 R flights Berlin wrong
 R hotels
 R users
-2 t3
+3 t3
 W flights 3 1516994639000 1516994939000
 D flights 3 1516994639000 1516994939000
+R hotels London

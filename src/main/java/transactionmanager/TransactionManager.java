@@ -32,6 +32,9 @@ public class TransactionManager {
   private void runTransaction(Transaction transaction, StreamObserver<TransactionReply> responseObserver) {
     List<Variable> read = transaction.getReadSetList();
     List<Variable> write = transaction.getWriteSetList();
+    Set<Variable> writeAndRead = new HashSet<>();
+    writeAndRead.addAll(write);
+    writeAndRead.addAll(read);
     List<Operation> reverseOperations = new LinkedList<>();
     StringBuilder messageBuilder = new StringBuilder();
     Map<Variable, List<Operation>> variableToReadOperation = new HashMap<>();
@@ -41,7 +44,7 @@ public class TransactionManager {
       while (true) {
         try {
           reentrantLock.lock();
-          for (Variable variable : write) {
+          for (Variable variable : writeAndRead) {
             if (writeLocks.get(variable) != null) {
               throw new IllegalAccessException();
             }
@@ -61,8 +64,6 @@ public class TransactionManager {
         }
         reentrantLock.unlock();
         System.out.println("All locks for " + transaction.getId() + " acquired at " + new Date(System.currentTimeMillis()));
-
-        messageBuilder.append("Success!");
 
         for (Operation operation : transaction.getOperationsList()) {
           if (isReadOperation(operation)) {
@@ -98,6 +99,8 @@ public class TransactionManager {
             }
           }
         }
+        messageBuilder.append("Success!");
+
         System.out.println("All operations run for " + transaction.getId() + " at " + new Date(System.currentTimeMillis()));
 
         sendReply(responseObserver, messageBuilder);
@@ -177,7 +180,7 @@ public class TransactionManager {
     Operation reverseOperation;
     if (isReadOperation(operation)) {
       List<User> users = usersManager.getAllUsers();
-      messageBuilder.append(users);
+      messageBuilder.append(users).append("\n");
     } else if (operation.getInstruction().equals("W")) {
       OperationParameters parameters = operation.getParameters();
 
@@ -187,7 +190,7 @@ public class TransactionManager {
 
       User user = new User(Integer.parseInt(parameters.getParameters(0)), parameters.getParameters(1), Integer.parseInt(parameters.getParameters(2)));
       usersManager.addUser(user);
-      messageBuilder.append("User ").append(user.getName()).append(" added!");
+      messageBuilder.append("User ").append(user.getName()).append(" added!").append("\n");
       if (reverseOperations != null) {
         reverseOperation = Operation.newBuilder().
             setVariable(operation.getVariable()).
@@ -202,8 +205,17 @@ public class TransactionManager {
   private void handleHotelOperations(Operation operation, HotelsManager hotelsManager, List<Operation> reverseOperations,
                                      StringBuilder messageBuilder) {
     if (isReadOperation(operation)) {
-      List<Hotel> hotels = hotelsManager.getAllHotels();
-      messageBuilder.append(hotels);
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() == 0) {
+        List<Hotel> hotels = hotelsManager.getAllHotels();
+        messageBuilder.append(hotels).append("\n");
+      } else if (parameters.getParametersCount() == 1) {
+        List<Hotel> hotels = hotelsManager.getHotels(parameters.getParameters(0));
+        messageBuilder.append(hotels).append("\n");
+      } else {
+        throw new IllegalArgumentException();
+      }
     }
   }
 
@@ -215,10 +227,10 @@ public class TransactionManager {
 
       if (parameters.getParametersCount() == 0) {
         List<Flight> flights = airlinesManager.getAllFlights();
-        messageBuilder.append(flights);
+        messageBuilder.append(flights).append("\n");
       } else if (parameters.getParametersCount() == 1) {
         List<Flight> flights = airlinesManager.getFlights(parameters.getParameters(0));
-        messageBuilder.append(flights);
+        messageBuilder.append(flights).append("\n");
       } else {
         throw new IllegalArgumentException();
       }
@@ -245,6 +257,7 @@ public class TransactionManager {
         reverseOperations.add(reverseOperation);
       }
       airlinesManager.addFlight(flight);
+      messageBuilder.append("Flight successfully added!\n");
     } else if (operation.getInstruction().equals("D")) {
       OperationParameters parameters = operation.getParameters();
 
@@ -267,13 +280,15 @@ public class TransactionManager {
                 addParameters(flight.getDeparture().getTime() + "")).build();
         reverseOperations.add(reverseOperation);
       }
-      airlinesManager.addFlight(flight);
+      airlinesManager.removeFlight(flight);
+      messageBuilder.append("Flight successfully removed!\n");
     }
   }
 
   private void handleRouteOperation(Operation operation, AirlinesManager airlinesManager, List<Operation> reverseOperations,
                                     StringBuilder messageBuilder) {
     Operation reverseOperation;
+
     if (operation.getInstruction().equals("W")) {
       OperationParameters parameters = operation.getParameters();
 
@@ -291,6 +306,7 @@ public class TransactionManager {
         reverseOperations.add(reverseOperation);
       }
       airlinesManager.addRoute(route);
+      messageBuilder.append("Route successfully added!\n");
     } else if (operation.getInstruction().equals("D")) {
       OperationParameters parameters = operation.getParameters();
 
@@ -313,6 +329,7 @@ public class TransactionManager {
       }
 
       airlinesManager.removeRoute(routeId);
+      messageBuilder.append("Route successfully removed!\n");
     }
   }
 
