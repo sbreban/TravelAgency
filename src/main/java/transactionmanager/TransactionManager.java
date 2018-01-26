@@ -32,6 +32,8 @@ public class TransactionManager {
     List<Variable> write = transaction.getWriteSetList();
     List<Operation> reverseOperations = new ArrayList<>();
     StringBuilder messageBuilder = new StringBuilder();
+    Map<Variable, List<Operation>> variableToReadOperation = new HashMap<>();
+    Map<Variable, List<Operation>> variableToWriteOperation = new HashMap<>();
 
     try {
       while (true) {
@@ -59,16 +61,44 @@ public class TransactionManager {
         System.out.println("All locks for " + transaction.getId() + " acquired at " + new Date(System.currentTimeMillis()));
 
         messageBuilder.append("Success!");
+
+        for (Operation operation : transaction.getOperationsList()) {
+          if (operation.getInstruction().equals("R")) {
+            List<Operation> operationsForRead = variableToReadOperation.computeIfAbsent(operation.getVariable(), k -> new ArrayList<>());
+            operationsForRead.add(operation);
+          } else {
+            List<Operation> operationsForWrite = variableToWriteOperation.computeIfAbsent(operation.getVariable(), k -> new ArrayList<>());
+            operationsForWrite.add(operation);
+          }
+        }
+
         for (Operation operation : transaction.getOperationsList()) {
           runOperation(operation, messageBuilder, reverseOperations);
+
+          Variable operationVariable = operation.getVariable();
+          if (operation.getInstruction().equals("R")) {
+            variableToReadOperation.get(operationVariable).remove(operation);
+            if (variableToReadOperation.get(operationVariable).size() == 0) {
+              reentrantLock.lock();
+              if (readLocks.get(operationVariable) != null && readLocks.get(operationVariable).contains(transaction)) {
+                readLocks.get(operationVariable).remove(transaction);
+              }
+              reentrantLock.unlock();
+            }
+          } else {
+            variableToWriteOperation.get(operationVariable).remove(operation);
+            if (variableToWriteOperation.get(operationVariable).size() == 0) {
+              reentrantLock.lock();
+              if (writeLocks.get(operationVariable) != null && writeLocks.get(operationVariable) == transaction) {
+                writeLocks.put(operationVariable, null);
+              }
+              reentrantLock.unlock();
+            }
+          }
         }
         System.out.println("All operations run for " + transaction.getId() + " at " + new Date(System.currentTimeMillis()));
 
-        releaseLocks(transaction);
-
-        TransactionReply reply = TransactionReply.newBuilder().setMessage(messageBuilder.toString()).build();
-        responseObserver.onNext(reply);
-        responseObserver.onCompleted();
+        sendReply(responseObserver, messageBuilder);
         System.out.println("All locks released from " + transaction.getId());
         break;
       }
@@ -77,10 +107,14 @@ public class TransactionManager {
         runOperation(reverserOperation, messageBuilder, null);
       }
       releaseLocks(transaction);
-      TransactionReply reply = TransactionReply.newBuilder().setMessage(messageBuilder.toString()).build();
-      responseObserver.onNext(reply);
-      responseObserver.onCompleted();
+      sendReply(responseObserver, messageBuilder);
     }
+  }
+
+  private void sendReply(StreamObserver<TransactionReply> responseObserver, StringBuilder messageBuilder) {
+    TransactionReply reply = TransactionReply.newBuilder().setMessage(messageBuilder.toString()).build();
+    responseObserver.onNext(reply);
+    responseObserver.onCompleted();
   }
 
   private void releaseLocks(Transaction transaction) {
