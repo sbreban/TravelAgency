@@ -104,6 +104,40 @@ public class AirlinesManager {
     return new Flight(route, departure, arrival);
   }
 
+  public Route getRoute(int routeId) {
+    PreparedStatement statement = null;
+    ResultSet rs = null;
+    Route route = null;
+    try {
+      String query = "SELECT * FROM routes WHERE id = ?";
+      statement = connection.prepareStatement(query);
+      statement.setInt(1, routeId);
+      rs = statement.executeQuery();
+      while (rs.next()) {
+        // read the result set
+        int id = rs.getInt(1);
+        String source = rs.getString(2);
+        String destination = rs.getString(3);
+
+        route = new Route(id, source, destination);
+      }
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+    } finally {
+      try {
+        if (rs != null) {
+          rs.close();
+        }
+        if (statement != null) {
+          statement.close();
+        }
+      } catch (SQLException e) {
+        System.err.println(e);
+      }
+    }
+    return route;
+  }
+
   public void addRoute(Route route) {
     PreparedStatement statement = null;
     try {
@@ -133,6 +167,50 @@ public class AirlinesManager {
           "WHERE id = ?";
       statement = connection.prepareStatement(query);
       statement.setInt(1, routeId);
+      statement.executeUpdate();
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+    } finally {
+      try {
+        if (statement != null) {
+          statement.close();
+        }
+      } catch (SQLException e) {
+        System.err.println(e);
+      }
+    }
+  }
+
+  public void addFlight(Flight flight) {
+    PreparedStatement statement = null;
+    try {
+      String query = "INSERT INTO flights (route_id, departure_time, arrival_time) VALUES (?, ?, ?)";
+      statement = connection.prepareStatement(query);
+      statement.setInt(1, flight.getRoute().getId());
+      statement.setTimestamp(2, flight.getDeparture());
+      statement.setTimestamp(3, flight.getArrival());
+      statement.executeUpdate();
+    } catch (SQLException e) {
+      System.err.println(e.getMessage());
+    } finally {
+      try {
+        if (statement != null) {
+          statement.close();
+        }
+      } catch (SQLException e) {
+        System.err.println(e);
+      }
+    }
+  }
+
+  public void removeFlight(Flight flight) {
+    PreparedStatement statement = null;
+    try {
+      String query = "DELETE FROM flights WHERE route_id = ? and departure_time = ? and arrival_time = ?";
+      statement = connection.prepareStatement(query);
+      statement.setInt(1, flight.getRoute().getId());
+      statement.setTimestamp(2, flight.getDeparture());
+      statement.setTimestamp(3, flight.getArrival());
       statement.executeUpdate();
     } catch (SQLException e) {
       System.err.println(e.getMessage());

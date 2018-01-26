@@ -11,6 +11,7 @@ import server.*;
 import data.users.User;
 import data.users.UsersManager;
 
+import java.sql.Timestamp;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -150,52 +151,34 @@ public class TransactionManager {
     HotelsManager hotelsManager = new HotelsManager();
     UsersManager usersManager = new UsersManager();
 
-    Operation reverseOperation = null;
-    if (isReadOperation(operation) && operation.getVariable().getId().equals("flights")) {
-      List<Flight> flights = airlinesManager.getAllFlights();
-      messageBuilder.append(flights);
-    } else if (operation.getInstruction().equals("W") && operation.getVariable().getId().equals("route")) {
-      OperationParameters parameters = operation.getParameters();
+    if (isRouteOperation(operation)) {
+      handleRouteOperation(operation, airlinesManager, reverseOperations, messageBuilder);
+    }
 
-      if (parameters.getParametersCount() != 3) {
-        throw new IllegalArgumentException();
-      }
+    if (isFlightOperation(operation)) {
+      handleFlightOperation(operation, airlinesManager, reverseOperations, messageBuilder);
+    }
 
-      Route route = new Route(Integer.parseInt(parameters.getParameters(0)), parameters.getParameters(1), parameters.getParameters(2));
-      if (reverseOperations != null) {
-        reverseOperation = Operation.newBuilder().
-            setVariable(operation.getVariable()).
-            setInstruction("D").
-            setParameters(OperationParameters.newBuilder().addParameters(route.getId() + "").build()).
-            build();
-        reverseOperations.add(reverseOperation);
-      }
-      airlinesManager.addRoute(route);
-    } else if (operation.getInstruction().equals("D") && operation.getVariable().getId().equals("route")) {
-      OperationParameters parameters = operation.getParameters();
+    if (isHotelOperation(operation)) {
+      handleHotelOperations(operation, hotelsManager, reverseOperations, messageBuilder);
+    }
 
-      if (parameters.getParametersCount() != 1) {
-        throw new IllegalArgumentException();
-      }
+    if (isUserOperation(operation)) {
+      handleUserOperation(operation, usersManager, reverseOperations, messageBuilder);
+    }
 
-      int routeId = Integer.parseInt(parameters.getParameters(0));
-      airlinesManager.removeRoute(routeId);
-    } else if (isReadOperation(operation) && operation.getVariable().getId().equals("destinations")) {
-      OperationParameters parameters = operation.getParameters();
+    airlinesManager.close();
+    hotelsManager.close();
+    usersManager.close();
+  }
 
-      if (parameters.getParametersCount() != 1) {
-        throw new IllegalArgumentException();
-      }
-
-      List<Flight> flights = airlinesManager.getFlights(parameters.getParameters(0));
-      messageBuilder.append(flights);
-    } else if (isReadOperation(operation) && operation.getVariable().getId().equals("hotels")) {
-      List<Hotel> hotels = hotelsManager.getAllHotels();
-      messageBuilder.append(hotels);
-    } else if (isReadOperation(operation) && operation.getVariable().getId().equals("users")) {
+  private void handleUserOperation(Operation operation, UsersManager usersManager, List<Operation> reverseOperations,
+                                   StringBuilder messageBuilder) throws OperationException {
+    Operation reverseOperation;
+    if (isReadOperation(operation)) {
       List<User> users = usersManager.getAllUsers();
       messageBuilder.append(users);
-    } else if (operation.getInstruction().equals("W") && operation.getVariable().getId().equals("user")) {
+    } else if (operation.getInstruction().equals("W")) {
       OperationParameters parameters = operation.getParameters();
 
       if (parameters.getParametersCount() != 3) {
@@ -214,9 +197,138 @@ public class TransactionManager {
         reverseOperations.add(reverseOperation);
       }
     }
+  }
 
-    airlinesManager.close();
-    hotelsManager.close();
-    usersManager.close();
+  private void handleHotelOperations(Operation operation, HotelsManager hotelsManager, List<Operation> reverseOperations,
+                                     StringBuilder messageBuilder) {
+    if (isReadOperation(operation)) {
+      List<Hotel> hotels = hotelsManager.getAllHotels();
+      messageBuilder.append(hotels);
+    }
+  }
+
+  private void handleFlightOperation(Operation operation, AirlinesManager airlinesManager, List<Operation> reverseOperations,
+                                     StringBuilder messageBuilder) {
+    Operation reverseOperation;
+    if (isReadOperation(operation)) {
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() == 0) {
+        List<Flight> flights = airlinesManager.getAllFlights();
+        messageBuilder.append(flights);
+      } else if (parameters.getParametersCount() == 1) {
+        List<Flight> flights = airlinesManager.getFlights(parameters.getParameters(0));
+        messageBuilder.append(flights);
+      } else {
+        throw new IllegalArgumentException();
+      }
+    } else if (operation.getInstruction().equals("W")) {
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 3) {
+        throw new IllegalArgumentException();
+      }
+
+      int routeId = Integer.parseInt(parameters.getParameters(0));
+      Timestamp departure = new Timestamp(Long.parseLong(parameters.getParameters(1)));
+      Timestamp arrival = new Timestamp(Long.parseLong(parameters.getParameters(2)));
+
+      Flight flight = new Flight(routeId, departure, arrival);
+
+      if (reverseOperations != null) {
+        reverseOperation = Operation.newBuilder().
+            setVariable(operation.getVariable()).
+            setInstruction("D").
+            setParameters(OperationParameters.newBuilder().addParameters(flight.getRoute().getId() + "").
+                addParameters(flight.getDeparture().getTime() + "").
+                addParameters(flight.getDeparture().getTime() + "")).build();
+        reverseOperations.add(reverseOperation);
+      }
+      airlinesManager.addFlight(flight);
+    } else if (operation.getInstruction().equals("D")) {
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 3) {
+        throw new IllegalArgumentException();
+      }
+
+      int routeId = Integer.parseInt(parameters.getParameters(0));
+      Timestamp departure = new Timestamp(Long.parseLong(parameters.getParameters(1)));
+      Timestamp arrival = new Timestamp(Long.parseLong(parameters.getParameters(2)));
+
+      Flight flight = new Flight(routeId, departure, arrival);
+
+      if (reverseOperations != null) {
+        reverseOperation = Operation.newBuilder().
+            setVariable(operation.getVariable()).
+            setInstruction("W").
+            setParameters(OperationParameters.newBuilder().addParameters(flight.getRoute().getId() + "").
+                addParameters(flight.getDeparture().getTime() + "").
+                addParameters(flight.getDeparture().getTime() + "")).build();
+        reverseOperations.add(reverseOperation);
+      }
+      airlinesManager.addFlight(flight);
+    }
+  }
+
+  private void handleRouteOperation(Operation operation, AirlinesManager airlinesManager, List<Operation> reverseOperations,
+                                    StringBuilder messageBuilder) {
+    Operation reverseOperation;
+    if (operation.getInstruction().equals("W")) {
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 3) {
+        throw new IllegalArgumentException();
+      }
+
+      Route route = new Route(Integer.parseInt(parameters.getParameters(0)), parameters.getParameters(1), parameters.getParameters(2));
+      if (reverseOperations != null) {
+        reverseOperation = Operation.newBuilder().
+            setVariable(operation.getVariable()).
+            setInstruction("D").
+            setParameters(OperationParameters.newBuilder().addParameters(route.getId() + "").build()).
+            build();
+        reverseOperations.add(reverseOperation);
+      }
+      airlinesManager.addRoute(route);
+    } else if (operation.getInstruction().equals("D")) {
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 1) {
+        throw new IllegalArgumentException();
+      }
+
+      int routeId = Integer.parseInt(parameters.getParameters(0));
+
+      if (reverseOperations != null) {
+        Route toDeleteRoute = airlinesManager.getRoute(routeId);
+        reverseOperation = Operation.newBuilder().
+            setVariable(operation.getVariable()).
+            setInstruction("W").
+            setParameters(OperationParameters.newBuilder().addParameters(toDeleteRoute.getId() + "").
+                addParameters(toDeleteRoute.getSource()).addParameters(toDeleteRoute.getDestination()).
+                build()).
+            build();
+        reverseOperations.add(reverseOperation);
+      }
+
+      airlinesManager.removeRoute(routeId);
+    }
+  }
+
+  private boolean isFlightOperation(Operation operation) {
+    return operation.getVariable().getId().equals("flights");
+  }
+
+  private boolean isRouteOperation(Operation operation) {
+    return operation.getVariable().getId().equals("routes");
+  }
+
+  private boolean isHotelOperation(Operation operation) {
+    return operation.getVariable().getId().equals("hotels");
+  }
+
+  private boolean isUserOperation(Operation operation) {
+    return operation.getVariable().getId().equals("users");
   }
 }

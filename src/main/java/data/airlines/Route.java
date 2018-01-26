@@ -11,6 +11,10 @@ public class Route {
     this.destination = destination;
   }
 
+  public Route(int routeId) {
+    this.id = routeId;
+  }
+
   public int getId() {
     return id;
   }
