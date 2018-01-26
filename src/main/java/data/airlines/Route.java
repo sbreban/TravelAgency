@@ -1,4 +1,4 @@
-package airlines;
+package data.airlines;
 
 public class Route {
   private int id;

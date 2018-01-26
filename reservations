@@ -1,12 +1,12 @@
 2
 4 t1
 R 5
-W route 2 Berlin Cluj-Napoca 12
+W route 5 Bucuresti Cluj-Napoca
 R flights
-W user 2 DougStanhope 50
+W user 4 hmuresan 24
 5 t2
 W 2
-D route 2
+D route 5
 R destinations Berlin
 R hotels
 R users

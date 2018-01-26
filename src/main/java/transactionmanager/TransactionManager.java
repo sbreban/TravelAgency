@@ -1,14 +1,15 @@
 package transactionmanager;
 
-import airlines.AirlinesManager;
-import airlines.Flight;
-import airlines.Route;
-import hotels.Hotel;
-import hotels.HotelsManager;
+import data.OperationException;
+import data.airlines.AirlinesManager;
+import data.airlines.Flight;
+import data.airlines.Route;
+import data.hotels.Hotel;
+import data.hotels.HotelsManager;
 import io.grpc.stub.StreamObserver;
 import server.*;
-import users.User;
-import users.UsersManager;
+import data.users.User;
+import data.users.UsersManager;
 
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -102,12 +103,21 @@ public class TransactionManager {
         System.out.println("All locks released from " + transaction.getId());
         break;
       }
-    } catch (Exception e) {
-      for (int i = reverseOperations.size() - 1; i >= 0; i--) {
-        Operation reverserOperation = reverseOperations.get(i);
-        runOperation(reverserOperation, messageBuilder, null);
+    } catch (OperationException | IllegalArgumentException e) {
+      String transactionFailMessage = "Transaction " + transaction.getId() + " failed at " + new Date(System.currentTimeMillis());
+      System.out.println(transactionFailMessage + ". Rollback!");
+
+      try {
+        for (int i = reverseOperations.size() - 1; i >= 0; i--) {
+          Operation reverserOperation = reverseOperations.get(i);
+          runOperation(reverserOperation, messageBuilder, null);
+        }
+      } catch (OperationException rollbackException) {
+        System.err.println(rollbackException.getMessage());
       }
       releaseLocks(transaction);
+      messageBuilder = new StringBuilder();
+      messageBuilder.append(transactionFailMessage);
       sendReply(responseObserver, messageBuilder);
     }
   }
@@ -135,7 +145,7 @@ public class TransactionManager {
     reentrantLock.unlock();
   }
 
-  private void runOperation(Operation operation, StringBuilder messageBuilder, List<Operation> reverseOperations) {
+  private void runOperation(Operation operation, StringBuilder messageBuilder, List<Operation> reverseOperations) throws OperationException {
     AirlinesManager airlinesManager = new AirlinesManager();
     HotelsManager hotelsManager = new HotelsManager();
     UsersManager usersManager = new UsersManager();
@@ -146,6 +156,11 @@ public class TransactionManager {
       messageBuilder.append(flights);
     } else if (operation.getInstruction().equals("W") && operation.getVariable().getId().equals("route")) {
       OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 3) {
+        throw new IllegalArgumentException();
+      }
+
       Route route = new Route(Integer.parseInt(parameters.getParameters(0)), parameters.getParameters(1), parameters.getParameters(2));
       if (reverseOperations != null) {
         reverseOperation = Operation.newBuilder().
@@ -156,15 +171,23 @@ public class TransactionManager {
         reverseOperations.add(reverseOperation);
       }
       airlinesManager.addRoute(route);
-      if (parameters.getParametersCount() > 3) {
-        throw new IllegalArgumentException();
-      }
     } else if (operation.getInstruction().equals("D") && operation.getVariable().getId().equals("route")) {
       OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 1) {
+        throw new IllegalArgumentException();
+      }
+
       int routeId = Integer.parseInt(parameters.getParameters(0));
       airlinesManager.removeRoute(routeId);
     } else if (isReadOperation(operation) && operation.getVariable().getId().equals("destinations")) {
-      List<Flight> flights = airlinesManager.getFlights(operation.getParameters().getParameters(0));
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 1) {
+        throw new IllegalArgumentException();
+      }
+
+      List<Flight> flights = airlinesManager.getFlights(parameters.getParameters(0));
       messageBuilder.append(flights);
     } else if (isReadOperation(operation) && operation.getVariable().getId().equals("hotels")) {
       List<Hotel> hotels = hotelsManager.getAllHotels();
@@ -174,6 +197,11 @@ public class TransactionManager {
       messageBuilder.append(users);
     } else if (operation.getInstruction().equals("W") && operation.getVariable().getId().equals("user")) {
       OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 3) {
+        throw new IllegalArgumentException();
+      }
+
       User user = new User(Integer.parseInt(parameters.getParameters(0)), parameters.getParameters(1), Integer.parseInt(parameters.getParameters(2)));
       usersManager.addUser(user);
       messageBuilder.append("User ").append(user.getName()).append(" added!");

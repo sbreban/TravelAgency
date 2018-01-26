@@ -1,4 +1,4 @@
-package hotels;
+package data.hotels;
 
 public class Hotel {
   private int id;

@@ -1,4 +1,4 @@
-package airlines;
+package data.airlines;
 
 import java.sql.*;
 import java.util.ArrayList;

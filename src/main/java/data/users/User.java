@@ -1,4 +1,4 @@
-package users;
+package data.users;
 
 public class User {
   private int id;
