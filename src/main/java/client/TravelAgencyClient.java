@@ -23,20 +23,20 @@ public class TravelAgencyClient {
 
   private final ManagedChannel channel;
   private final TransactionHandlerGrpc.TransactionHandlerBlockingStub blockingStub;
-  private final Transaction transaction;
+  private final List<Transaction> transactions;
   private static final ExecutorService executor = Executors.newFixedThreadPool(5);
 
 
-  private TravelAgencyClient(String host, int port, Transaction transaction) {
+  private TravelAgencyClient(String host, int port, List<Transaction> transactions) {
     this(ManagedChannelBuilder.forAddress(host, port)
         .usePlaintext(true)
-        .build(), transaction);
+        .build(), transactions);
   }
 
-  private TravelAgencyClient(ManagedChannel channel, Transaction transaction) {
+  private TravelAgencyClient(ManagedChannel channel, List<Transaction> transactions) {
     this.channel = channel;
     this.blockingStub = TransactionHandlerGrpc.newBlockingStub(channel);
-    this.transaction = transaction;
+    this.transactions = transactions;
   }
 
   private void shutdown() throws InterruptedException {
@@ -44,6 +44,12 @@ public class TravelAgencyClient {
   }
 
   private void sendTransactions() {
+    for (Transaction transaction : transactions) {
+      executor.submit(() -> sendTransaction(transaction));
+    }
+  }
+
+  private void sendTransaction(Transaction transaction) {
     logger.info("Will try to send transaction " + transaction.getId() + " ...");
     TransactionRequest request = TransactionRequest.newBuilder().addTransaction(transaction).build();
     TransactionReply response;
@@ -54,11 +60,6 @@ public class TravelAgencyClient {
       return;
     }
     logger.info("Reply for transaction " + transaction.getId() + ": " + response.getMessage());
-    try {
-      shutdown();
-    } catch (InterruptedException e) {
-      System.err.println(e.getMessage());
-    }
   }
 
   public static void main(String[] args) {
@@ -66,11 +67,18 @@ public class TravelAgencyClient {
     List<Transaction> transactions = readTransactionsFromFile(args[0]);
 
     int port = 50051;
-    for (Transaction transaction : transactions) {
-      TravelAgencyClient client = new TravelAgencyClient("localhost", port, transaction);
-      executor.submit(client::sendTransactions);
-    }
+    TravelAgencyClient client = new TravelAgencyClient("localhost", port, transactions);
+    client.sendTransactions();
 
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      System.err.println("*** shutting down gRPC client since JVM is shutting down");
+      try {
+        client.shutdown();
+      } catch (InterruptedException e) {
+        System.err.println(e.getMessage());
+      }
+      System.err.println("*** client shut down");
+    }));
   }
 
   private static List<Transaction> readTransactionsFromFile(String transactionFile) {
