@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -21,42 +23,59 @@ public class TravelAgencyClient {
 
   private final ManagedChannel channel;
   private final TransactionHandlerGrpc.TransactionHandlerBlockingStub blockingStub;
+  private final Transaction transaction;
+  private static final ExecutorService executor = Executors.newFixedThreadPool(5);
 
-  private TravelAgencyClient(String host, int port) {
+
+  private TravelAgencyClient(String host, int port, Transaction transaction) {
     this(ManagedChannelBuilder.forAddress(host, port)
         .usePlaintext(true)
-        .build());
+        .build(), transaction);
   }
 
-  private TravelAgencyClient(ManagedChannel channel) {
+  private TravelAgencyClient(ManagedChannel channel, Transaction transaction) {
     this.channel = channel;
-    blockingStub = TransactionHandlerGrpc.newBlockingStub(channel);
+    this.blockingStub = TransactionHandlerGrpc.newBlockingStub(channel);
+    this.transaction = transaction;
   }
 
-  public void shutdown() throws InterruptedException {
+  private void shutdown() throws InterruptedException {
     channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
   }
 
-  private void sendTransactions(List<Transaction> transactions) {
-    for (Transaction transaction : transactions) {
-      logger.info("Will try to send transaction " + transaction.getId() + " ...");
-      TransactionRequest request = TransactionRequest.newBuilder().addTransaction(transaction).build();
-      TransactionReply response;
-      try {
-        response = blockingStub.sendTransaction(request);
-      } catch (StatusRuntimeException e) {
-        logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
-        return;
-      }
-      logger.info("Reply: " + response.getMessage());
+  private void sendTransactions() {
+    logger.info("Will try to send transaction " + transaction.getId() + " ...");
+    TransactionRequest request = TransactionRequest.newBuilder().addTransaction(transaction).build();
+    TransactionReply response;
+    try {
+      response = blockingStub.sendTransaction(request);
+    } catch (StatusRuntimeException e) {
+      logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
+      return;
+    }
+    logger.info("Reply for transaction " + transaction.getId() + ": " + response.getMessage());
+    try {
+      shutdown();
+    } catch (InterruptedException e) {
+      System.err.println(e.getMessage());
     }
   }
 
-  public static void main(String[] args) throws Exception {
-    TravelAgencyClient client = new TravelAgencyClient("localhost", 50051);
+  public static void main(String[] args) {
 
+    List<Transaction> transactions = readTransactionsFromFile(args[0]);
+
+    int port = 50051;
+    for (Transaction transaction : transactions) {
+      TravelAgencyClient client = new TravelAgencyClient("localhost", port, transaction);
+      executor.submit(client::sendTransactions);
+    }
+
+  }
+
+  private static List<Transaction> readTransactionsFromFile(String transactionFile) {
     List<Transaction> transactions = new ArrayList<>();
-    try (BufferedReader br = new BufferedReader(new FileReader(args[0]))) {
+    try (BufferedReader br = new BufferedReader(new FileReader(transactionFile))) {
 
       String sCurrentLine = br.readLine();
       int noTransactions = Integer.parseInt(sCurrentLine);
@@ -107,15 +126,9 @@ public class TravelAgencyClient {
         transactions.add(transaction);
       }
 
-//      for (Transaction transaction : transactions) {
-//        System.out.println(TextFormat.shortDebugString(transaction) + " " + transaction.getOperationsList());
-//      }
-
-      client.sendTransactions(transactions);
     } catch (IOException e) {
-      e.printStackTrace();
-    } finally {
-      client.shutdown();
+      System.err.println(e.getMessage());
     }
+    return transactions;
   }
 }
