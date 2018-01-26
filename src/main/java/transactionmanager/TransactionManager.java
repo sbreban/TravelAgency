@@ -30,7 +30,7 @@ public class TransactionManager {
   private void runTransaction(Transaction transaction, StreamObserver<TransactionReply> responseObserver) {
     List<Variable> read = transaction.getReadSetList();
     List<Variable> write = transaction.getWriteSetList();
-    List<Operation> reverseOperations = new ArrayList<>();
+    List<Operation> reverseOperations = new LinkedList<>();
     StringBuilder messageBuilder = new StringBuilder();
     Map<Variable, List<Operation>> variableToReadOperation = new HashMap<>();
     Map<Variable, List<Operation>> variableToWriteOperation = new HashMap<>();
@@ -63,7 +63,7 @@ public class TransactionManager {
         messageBuilder.append("Success!");
 
         for (Operation operation : transaction.getOperationsList()) {
-          if (operation.getInstruction().equals("R")) {
+          if (isReadOperation(operation)) {
             List<Operation> operationsForRead = variableToReadOperation.computeIfAbsent(operation.getVariable(), k -> new ArrayList<>());
             operationsForRead.add(operation);
           } else {
@@ -76,7 +76,7 @@ public class TransactionManager {
           runOperation(operation, messageBuilder, reverseOperations);
 
           Variable operationVariable = operation.getVariable();
-          if (operation.getInstruction().equals("R")) {
+          if (isReadOperation(operation)) {
             variableToReadOperation.get(operationVariable).remove(operation);
             if (variableToReadOperation.get(operationVariable).size() == 0) {
               reentrantLock.lock();
@@ -103,12 +103,17 @@ public class TransactionManager {
         break;
       }
     } catch (Exception e) {
-      for (Operation reverserOperation : reverseOperations) {
+      for (int i = reverseOperations.size() - 1; i >= 0; i--) {
+        Operation reverserOperation = reverseOperations.get(i);
         runOperation(reverserOperation, messageBuilder, null);
       }
       releaseLocks(transaction);
       sendReply(responseObserver, messageBuilder);
     }
+  }
+
+  private boolean isReadOperation(Operation operation) {
+    return operation.getInstruction().equals("R");
   }
 
   private void sendReply(StreamObserver<TransactionReply> responseObserver, StringBuilder messageBuilder) {
@@ -136,7 +141,7 @@ public class TransactionManager {
     UsersManager usersManager = new UsersManager();
 
     Operation reverseOperation = null;
-    if (operation.getInstruction().equals("R") && operation.getVariable().getId().equals("flights")) {
+    if (isReadOperation(operation) && operation.getVariable().getId().equals("flights")) {
       List<Flight> flights = airlinesManager.getAllFlights();
       messageBuilder.append(flights);
     } else if (operation.getInstruction().equals("W") && operation.getVariable().getId().equals("route")) {
@@ -158,13 +163,13 @@ public class TransactionManager {
       OperationParameters parameters = operation.getParameters();
       int routeId = Integer.parseInt(parameters.getParameters(0));
       airlinesManager.removeRoute(routeId);
-    } else if (operation.getInstruction().equals("R") && operation.getVariable().getId().equals("destinations")) {
+    } else if (isReadOperation(operation) && operation.getVariable().getId().equals("destinations")) {
       List<Flight> flights = airlinesManager.getFlights(operation.getParameters().getParameters(0));
       messageBuilder.append(flights);
-    } else if (operation.getInstruction().equals("R") && operation.getVariable().getId().equals("hotels")) {
+    } else if (isReadOperation(operation) && operation.getVariable().getId().equals("hotels")) {
       List<Hotel> hotels = hotelsManager.getAllHotels();
       messageBuilder.append(hotels);
-    } else if (operation.getInstruction().equals("R") && operation.getVariable().getId().equals("users")) {
+    } else if (isReadOperation(operation) && operation.getVariable().getId().equals("users")) {
       List<User> users = usersManager.getAllUsers();
       messageBuilder.append(users);
     } else if (operation.getInstruction().equals("W") && operation.getVariable().getId().equals("user")) {
