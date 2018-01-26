@@ -6,6 +6,7 @@ import data.airlines.Flight;
 import data.airlines.Route;
 import data.hotels.Hotel;
 import data.hotels.HotelsManager;
+import data.users.HotelReservation;
 import io.grpc.stub.StreamObserver;
 import server.*;
 import data.users.User;
@@ -156,23 +157,78 @@ public class TransactionManager {
 
     if (isRouteOperation(operation)) {
       handleRouteOperation(operation, airlinesManager, reverseOperations, messageBuilder);
-    }
-
-    if (isFlightOperation(operation)) {
+    } else if (isFlightOperation(operation)) {
       handleFlightOperation(operation, airlinesManager, reverseOperations, messageBuilder);
-    }
-
-    if (isHotelOperation(operation)) {
+    } else if (isHotelOperation(operation)) {
       handleHotelOperations(operation, hotelsManager, reverseOperations, messageBuilder);
-    }
-
-    if (isUserOperation(operation)) {
+    } else if (isUserOperation(operation)) {
       handleUserOperation(operation, usersManager, reverseOperations, messageBuilder);
+    } else if (isHotelReservationOperation(operation)) {
+      handleHotelReservationOperation(operation, usersManager, reverseOperations, messageBuilder);
     }
 
     airlinesManager.close();
     hotelsManager.close();
     usersManager.close();
+  }
+
+  private void handleHotelReservationOperation(Operation operation, UsersManager usersManager, List<Operation> reverseOperations,
+                                               StringBuilder messageBuilder) throws OperationException {
+    Operation reverseOperation;
+    if (isReadOperation(operation)) {
+
+    } else if (operation.getInstruction().equals("W")) {
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 5) {
+        throw new IllegalArgumentException();
+      }
+
+      int userId = Integer.parseInt(parameters.getParameters(0));
+      int hotelId = Integer.parseInt(parameters.getParameters(1));
+      Timestamp arrival = new Timestamp(Long.parseLong(parameters.getParameters(2)));
+      Timestamp departure = new Timestamp(Long.parseLong(parameters.getParameters(3)));
+      int noRooms = Integer.parseInt(parameters.getParameters(4));
+
+      if (reverseOperations != null) {
+        reverseOperation = Operation.newBuilder().
+            setVariable(operation.getVariable()).
+            setInstruction("D").
+            setParameters(OperationParameters.newBuilder().addParameters(userId + "").
+                addParameters(hotelId + "").
+                build()).
+            build();
+        reverseOperations.add(reverseOperation);
+      }
+      usersManager.reserveHotel(new HotelReservation(userId, hotelId, arrival, departure, noRooms));
+      messageBuilder.append("User ").append(userId).append(" reserved a room at hotel ").append(hotelId).append("\n");
+    } else if (operation.getInstruction().equals("D")) {
+      OperationParameters parameters = operation.getParameters();
+
+      if (parameters.getParametersCount() != 2) {
+        throw new IllegalArgumentException();
+      }
+
+      int userId = Integer.parseInt(parameters.getParameters(0));
+      int hotelId = Integer.parseInt(parameters.getParameters(1));
+
+      HotelReservation hotelReservation = usersManager.getHotelReservation(userId, hotelId);
+      if (reverseOperations != null) {
+        reverseOperation = Operation.newBuilder().
+            setVariable(operation.getVariable()).
+            setInstruction("W").
+            setParameters(OperationParameters.newBuilder().addParameters(userId + "").
+                addParameters(hotelId + "").
+                addParameters(hotelReservation.getArrival().getTime() + "").
+                addParameters(hotelReservation.getDeparture().getTime() + "").
+                addParameters(hotelReservation.getNoRooms() + "").
+                build()).
+            build();
+        reverseOperations.add(reverseOperation);
+      }
+      usersManager.removeHotelReservation(userId, hotelId);
+      messageBuilder.append("User ").append(userId).append(" removed reserved rooms at hotel ").append(hotelId).append("\n");
+    }
   }
 
   private void handleUserOperation(Operation operation, UsersManager usersManager, List<Operation> reverseOperations,
@@ -189,8 +245,6 @@ public class TransactionManager {
       }
 
       User user = new User(Integer.parseInt(parameters.getParameters(0)), parameters.getParameters(1), Integer.parseInt(parameters.getParameters(2)));
-      usersManager.addUser(user);
-      messageBuilder.append("User ").append(user.getName()).append(" added!").append("\n");
       if (reverseOperations != null) {
         reverseOperation = Operation.newBuilder().
             setVariable(operation.getVariable()).
@@ -199,6 +253,8 @@ public class TransactionManager {
             build();
         reverseOperations.add(reverseOperation);
       }
+      usersManager.addUser(user);
+      messageBuilder.append("User ").append(user.getName()).append(" added!").append("\n");
     }
   }
 
@@ -348,4 +404,9 @@ public class TransactionManager {
   private boolean isUserOperation(Operation operation) {
     return operation.getVariable().getId().equals("users");
   }
+
+  private boolean isHotelReservationOperation(Operation operation) {
+    return operation.getVariable().getId().equals("hotel_reservations");
+  }
+
 }

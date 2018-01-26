@@ -1,4 +1,4 @@
-3
+4
 4 t1
 R 5
 W routes 5 Bucuresti Cluj-Napoca
@@ -14,3 +14,6 @@ R users
 W flights 3 1516994639000 1516994939000
 D flights 3 1516994639000 1516994939000
 R hotels London
+2 t4
+W hotel_reservations 1 2 1516994639000 1516994939000 2
+D hotel_reservations 1 2
