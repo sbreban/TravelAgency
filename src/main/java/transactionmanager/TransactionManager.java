@@ -233,7 +233,7 @@ public class TransactionManager {
 
   private void handleUserOperation(Operation operation, UsersManager usersManager, List<Operation> reverseOperations,
                                    StringBuilder messageBuilder) throws OperationException {
-    Operation reverseOperation;
+    Operation reverseOperation = null;
     if (isReadOperation(operation)) {
       List<User> users = usersManager.getAllUsers();
       messageBuilder.append(users).append("\n");
@@ -251,9 +251,11 @@ public class TransactionManager {
             setInstruction("D").
             setParameters(OperationParameters.newBuilder().addParameters(user.getId() + "").build()).
             build();
-        reverseOperations.add(reverseOperation);
       }
       usersManager.addUser(user);
+      if (reverseOperation != null) {
+        reverseOperations.add(reverseOperation);
+      }
       messageBuilder.append("User ").append(user.getName()).append(" added!").append("\n");
     }
   }
@@ -277,7 +279,7 @@ public class TransactionManager {
 
   private void handleFlightOperation(Operation operation, AirlinesManager airlinesManager, List<Operation> reverseOperations,
                                      StringBuilder messageBuilder) {
-    Operation reverseOperation;
+    Operation reverseOperation = null;
     if (isReadOperation(operation)) {
       OperationParameters parameters = operation.getParameters();
 
@@ -310,9 +312,11 @@ public class TransactionManager {
             setParameters(OperationParameters.newBuilder().addParameters(flight.getRoute().getId() + "").
                 addParameters(flight.getDeparture().getTime() + "").
                 addParameters(flight.getDeparture().getTime() + "")).build();
-        reverseOperations.add(reverseOperation);
       }
       airlinesManager.addFlight(flight);
+      if (reverseOperation != null) {
+        reverseOperations.add(reverseOperation);
+      }
       messageBuilder.append("Flight successfully added!\n");
     } else if (operation.getInstruction().equals("D")) {
       OperationParameters parameters = operation.getParameters();
@@ -334,16 +338,18 @@ public class TransactionManager {
             setParameters(OperationParameters.newBuilder().addParameters(flight.getRoute().getId() + "").
                 addParameters(flight.getDeparture().getTime() + "").
                 addParameters(flight.getDeparture().getTime() + "")).build();
-        reverseOperations.add(reverseOperation);
       }
       airlinesManager.removeFlight(flight);
+      if (reverseOperation != null) {
+        reverseOperations.add(reverseOperation);
+      }
       messageBuilder.append("Flight successfully removed!\n");
     }
   }
 
   private void handleRouteOperation(Operation operation, AirlinesManager airlinesManager, List<Operation> reverseOperations,
                                     StringBuilder messageBuilder) {
-    Operation reverseOperation;
+    Operation reverseOperation = null;
 
     if (operation.getInstruction().equals("W")) {
       OperationParameters parameters = operation.getParameters();
@@ -359,9 +365,11 @@ public class TransactionManager {
             setInstruction("D").
             setParameters(OperationParameters.newBuilder().addParameters(route.getId() + "").build()).
             build();
-        reverseOperations.add(reverseOperation);
       }
       airlinesManager.addRoute(route);
+      if (reverseOperation != null) {
+        reverseOperations.add(reverseOperation);
+      }
       messageBuilder.append("Route successfully added!\n");
     } else if (operation.getInstruction().equals("D")) {
       OperationParameters parameters = operation.getParameters();
@@ -381,10 +389,12 @@ public class TransactionManager {
                 addParameters(toDeleteRoute.getSource()).addParameters(toDeleteRoute.getDestination()).
                 build()).
             build();
-        reverseOperations.add(reverseOperation);
       }
 
       airlinesManager.removeRoute(routeId);
+      if (reverseOperation != null) {
+        reverseOperations.add(reverseOperation);
+      }
       messageBuilder.append("Route successfully removed!\n");
     }
   }
